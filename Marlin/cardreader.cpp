@@ -31,6 +31,17 @@
 #include "language.h"
 #include "printcounter.h"
 
+#ifdef LGT_MAC
+  #include "LGT_SCR.h"
+  extern LGT_SCR LGT_LCD;
+  extern PRINTER_STATUS status_type;
+  extern PRINTER_KILL_STATUS kill_type;
+  extern void LGT_Printer_Total_Work_Time();
+  extern uint32_t total_print_time;
+  extern char printer_work_time[31];
+  extern void LGT_Total_Time_To_String(char* buf, uint32_t time);
+#endif
+
 #if ENABLED(POWER_LOSS_RECOVERY)
   #include "power_loss_recovery.h"
 #endif
@@ -358,6 +369,11 @@ void CardReader::openFile(char * const path, const bool read, const bool subcall
         SERIAL_ERROR_START();
         SERIAL_ERRORPGM("trying to call sub-gcode files with too many levels. MAX level is:");
         SERIAL_ERRORLN((int)SD_PROCEDURE_DEPTH);
+
+        #ifdef LGT_MAC
+          kill_type = SDCARD_KILL;
+        #endif
+
         kill(PSTR(MSG_KILLED));
         return;
       }
@@ -898,9 +914,15 @@ void CardReader::printingHasFinished() {
   else {
     sdprinting = false;
 
+    #ifdef LGT_MAC
+      LGT_Printer_Total_Work_Time();
+    #endif
+
+    /* u30promod
     #if ENABLED(POWER_LOSS_RECOVERY)
       removeJobRecoveryFile();
     #endif
+    */
 
     #if ENABLED(SD_FINISHED_STEPPERRELEASE) && defined(SD_FINISHED_RELEASECOMMAND)
       planner.finish_and_disable();
@@ -917,6 +939,19 @@ void CardReader::printingHasFinished() {
     #if ENABLED(SD_REPRINT_LAST_SELECTED_FILE)
       lcd_reselect_last_file();
     #endif
+
+    #ifdef LGT_MAC
+		  status_type = PRINTER_PRINTING_F;
+		  LGT_LCD.LGT_Change_Page(ID_DIALOG_PRINT_FINISH);
+      #if ENABLED(POWER_LOSS_RECOVERY)
+          card.openJobRecoveryFile();
+          job_recovery_info.valid_head = 0;
+          job_recovery_info.valid_foot = 0;
+          (void)card.saveJobRecoveryInfo();
+          card.closeJobRecoveryFile();
+          job_recovery_commands_count = 0;
+      #endif
+	  #endif
   }
 }
 
@@ -949,6 +984,10 @@ void CardReader::printingHasFinished() {
       SERIAL_PROTOCOLLNPAIR(MSG_SD_WRITE_TO_FILE, job_recovery_file_name);
   }
 
+  void CardReader::openJobRecoveryFile() {
+	  CardReader::openJobRecoveryFile(false);
+  }
+
   void CardReader::closeJobRecoveryFile() { jobRecoveryFile.close(); }
 
   bool CardReader::jobRecoverFileExists() {
@@ -960,9 +999,10 @@ void CardReader::printingHasFinished() {
   int16_t CardReader::saveJobRecoveryInfo() {
     jobRecoveryFile.seekSet(0);
     const int16_t ret = jobRecoveryFile.write(&job_recovery_info, sizeof(job_recovery_info));
-    #if ENABLED(DEBUG_POWER_LOSS_RECOVERY)
-      if (ret == -1) SERIAL_PROTOCOLLNPGM("Power-loss file write failed.");
-    #endif
+    //#if ENABLED(DEBUG_POWER_LOSS_RECOVERY)
+    //  if (ret == -1) SERIAL_PROTOCOLLNPGM("Power-loss file write failed.");
+    //#endif
+    if (ret == -1) SERIAL_PROTOCOLLNPGM("Power-loss file write failed.");
     return ret;
   }
 

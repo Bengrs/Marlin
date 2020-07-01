@@ -55,6 +55,10 @@
 #include "parser.h"
 #include "vector_3.h"
 
+#ifdef LGT_MAC
+  #include "LGT_SCR.h"
+#endif
+
 #if ENABLED(MESH_BED_LEVELING)
   #include "mesh_bed_leveling.h"
 #endif

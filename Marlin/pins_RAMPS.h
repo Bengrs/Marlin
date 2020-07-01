@@ -51,6 +51,7 @@
 #ifndef BOARD_NAME
   #define BOARD_NAME "RAMPS 1.4"
 #endif
+#include "Configuration.h"
 
 //
 // Servos
@@ -79,15 +80,26 @@
 #endif
 #define Y_MIN_PIN          14
 #define Y_MAX_PIN          15
-#define Z_MIN_PIN          18
-#define Z_MAX_PIN          19
+
+#ifdef LGT_MAC
+	#define SD_DETECT_PIN   49
+
+  #define Z_MIN_PIN          35
+  #define Z_MAX_PIN          37
+#else
+	#define Z_MIN_PIN          18
+	#define Z_MAX_PIN          19
+#endif
+
 
 //
 // Z Probe (when not Z_MIN_PIN)
 //
+/*
 #ifndef Z_MIN_PROBE_PIN
   #define Z_MIN_PROBE_PIN  32
 #endif
+*/
 
 //
 // Steppers
@@ -120,12 +132,14 @@
   #define E0_CS_PIN        42
 #endif
 
-#define E1_STEP_PIN        36
-#define E1_DIR_PIN         34
-#define E1_ENABLE_PIN      30
-#ifndef E1_CS_PIN
-  #define E1_CS_PIN        44
-#endif
+#ifndef LGT_MAC
+	#define E1_STEP_PIN        36
+	#define E1_DIR_PIN         34
+	#define E1_ENABLE_PIN      30
+	#ifndef E1_CS_PIN
+		#define E1_CS_PIN        44
+	#endif
+#endif // !LGT_MAC
 
 /**
  * Default pins for TMC software SPI
@@ -240,7 +254,9 @@
 // Temperature Sensors
 //
 #define TEMP_0_PIN         13   // Analog Input
-#define TEMP_1_PIN         15   // Analog Input
+#ifndef LGT_MAC
+	#define TEMP_1_PIN         15   // Analog Input
+#endif // !LGT_MAC
 #define TEMP_BED_PIN       14   // Analog Input
 
 // SPI for Max6675 or Max31855 Thermocouple
@@ -327,7 +343,7 @@
 
 // define digital pin 4 for the filament runout sensor. Use the RAMPS 1.4 digital input 4 on the servos connector
 #ifndef FIL_RUNOUT_PIN
-  #define FIL_RUNOUT_PIN    4
+  #define FIL_RUNOUT_PIN    2
 #endif
 
 #ifndef PS_ON_PIN
@@ -368,9 +384,11 @@
 #ifndef E_MUX1_PIN
   #define E_MUX1_PIN 42   // E0_CS_PIN
 #endif
-#ifndef E_MUX2_PIN
-  #define E_MUX2_PIN 44   // E1_CS_PIN
-#endif
+#ifndef LGT_MAC
+	#ifndef E_MUX2_PIN
+		#define E_MUX2_PIN 44   // E1_CS_PIN
+	#endif
+#endif // !LGT_MAC
 
 //////////////////////////
 // LCDs and Controllers //

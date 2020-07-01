@@ -36,6 +36,14 @@
 #include "serial.h"
 #include "temperature.h"
 #include "ultralcd.h"
+#ifdef LGT_MAC
+#include "LGT_SCR.h"
+extern LGT_SCR LGT_LCD;
+extern millis_t recovery_time;
+extern float recovery_z_height;
+extern float recovery_E_len;
+extern bool check_recovery;
+#endif // LGT_MAC
 
 // Recovery data
 job_recovery_info_t job_recovery_info;
@@ -133,39 +141,54 @@ void check_print_job_recovery() {
 
         uint8_t ind = 0;
 
-        #if HAS_LEVELING
-          strcpy_P(job_recovery_commands[ind++], PSTR("M420 S0 Z0"));               // Leveling off before G92 or G28
-        #endif
+        #ifdef LGT_MAC
+          check_recovery = true;
+          feedrate_mm_s = job_recovery_info.feedrate;
 
-        strcpy_P(job_recovery_commands[ind++], PSTR("G92.0 Z0"));                   // Ensure Z is equal to 0
-        strcpy_P(job_recovery_commands[ind++], PSTR("G1 Z2"));                      // Raise Z by 2mm (we hope!)
-        strcpy_P(job_recovery_commands[ind++], PSTR("G28 R0"
-          #if ENABLED(MARLIN_DEV_MODE)
-            " S"
-          #elif !IS_KINEMATIC
-            " X Y"                                                                  // Home X and Y for Cartesian
+          char str_Z[16], str_E[16];
+          memset(str_Z, 0, sizeof(str_Z));
+          memset(str_E, 0, sizeof(str_E));
+
+          dtostrf(job_recovery_info.save_current_Z, 1, 3, str_Z); 
+          dtostrf(job_recovery_info.save_current_E, 1, 3, str_E); 
+
+          sprintf_P(job_recovery_commands[ind++], PSTR("G92 Z%s E%s"), str_Z, str_E);
+          sprintf_P(job_recovery_commands[ind++], PSTR("G28 R0 X0 Y0"));
+        #else
+          #if HAS_LEVELING
+            strcpy_P(job_recovery_commands[ind++], PSTR("M420 S0 Z0"));               // Leveling off before G92 or G28
           #endif
-        ));
 
-        char str_1[16], str_2[16];
+          strcpy_P(job_recovery_commands[ind++], PSTR("G92.0 Z0"));                   // Ensure Z is equal to 0
+          strcpy_P(job_recovery_commands[ind++], PSTR("G1 Z2"));                      // Raise Z by 2mm (we hope!)
+          strcpy_P(job_recovery_commands[ind++], PSTR("G28 R0"
+            #if ENABLED(MARLIN_DEV_MODE)
+              " S"
+            #elif !IS_KINEMATIC
+              " X Y"                                                                  // Home X and Y for Cartesian
+            #endif
+          ));
 
-        #if HAS_LEVELING
-          if (job_recovery_info.fade || job_recovery_info.leveling) {
-            // Restore leveling state before G92 sets Z
-            // This ensures the steppers correspond to the native Z
-            dtostrf(job_recovery_info.fade, 1, 1, str_1);
-            sprintf_P(job_recovery_commands[ind++], PSTR("M420 S%i Z%s"), int(job_recovery_info.leveling), str_1);
-          }
-        #endif
+          char str_1[16], str_2[16];
 
-        dtostrf(job_recovery_info.current_position[Z_AXIS] + 2, 1, 3, str_1);
-        dtostrf(job_recovery_info.current_position[E_CART]
-          #if ENABLED(SAVE_EACH_CMD_MODE)
-            - 5
+          #if HAS_LEVELING
+            if (job_recovery_info.fade || job_recovery_info.leveling) {
+              // Restore leveling state before G92 sets Z
+              // This ensures the steppers correspond to the native Z
+              dtostrf(job_recovery_info.fade, 1, 1, str_1);
+              sprintf_P(job_recovery_commands[ind++], PSTR("M420 S%i Z%s"), int(job_recovery_info.leveling), str_1);
+            }
           #endif
-          , 1, 3, str_2
-        );
-        sprintf_P(job_recovery_commands[ind++], PSTR("G92.0 Z%s E%s"), str_1, str_2); // Current Z + 2 and E
+
+          dtostrf(job_recovery_info.current_position[Z_AXIS] + 2, 1, 3, str_1);
+          dtostrf(job_recovery_info.current_position[E_CART]
+            #if ENABLED(SAVE_EACH_CMD_MODE)
+              - 5
+            #endif
+            , 1, 3, str_2
+          );
+          sprintf_P(job_recovery_commands[ind++], PSTR("G92.0 Z%s E%s"), str_1, str_2); // Current Z + 2 and E
+        #endif
 
         uint8_t r = job_recovery_info.cmd_queue_index_r, c = job_recovery_info.commands_in_queue;
         while (c--) {
@@ -175,7 +198,12 @@ void check_print_job_recovery() {
 
         if (job_recovery_info.sd_filename[0] == '/') job_recovery_info.sd_filename[0] = ' ';
         sprintf_P(job_recovery_commands[ind++], PSTR("M23 %s"), job_recovery_info.sd_filename);
-        sprintf_P(job_recovery_commands[ind++], PSTR("M24 S%ld T%ld"), job_recovery_info.sdpos, job_recovery_info.print_job_elapsed);
+        
+        #ifdef LGT_MAC
+          sprintf_P(job_recovery_commands[ind++], PSTR("M24 S%ld"), job_recovery_info.sdpos);
+        #else
+          sprintf_P(job_recovery_commands[ind++], PSTR("M24 S%ld T%ld"), job_recovery_info.sdpos, job_recovery_info.print_job_elapsed);
+        #endif
 
         job_recovery_commands_count = ind;
 
@@ -201,20 +229,24 @@ void save_job_recovery_info() {
     millis_t ms = millis();
   #endif
   if (
-    // Save on every command
-    #if ENABLED(SAVE_EACH_CMD_MODE)
-      true
+    #ifdef LGT_MAC
+      current_position[2] > 0 && abs((current_position[2] + recovery_z_height) - job_recovery_info.save_current_Z) >= 0.1
     #else
-      // Save if power loss pin is triggered
-      #if PIN_EXISTS(POWER_LOSS)
-        READ(POWER_LOSS_PIN) == POWER_LOSS_STATE ||
+      // Save on every command
+      #if ENABLED(SAVE_EACH_CMD_MODE)
+        true
+      #else
+        // Save if power loss pin is triggered
+        #if PIN_EXISTS(POWER_LOSS)
+          READ(POWER_LOSS_PIN) == POWER_LOSS_STATE ||
+        #endif
+        // Save if interval is elapsed
+        #if SAVE_INFO_INTERVAL_MS > 0
+          ELAPSED(ms, next_save_ms) ||
+        #endif
+        // Save on every new Z height
+        (current_position[Z_AXIS] > 0 && current_position[Z_AXIS] > job_recovery_info.current_position[Z_AXIS])
       #endif
-      // Save if interval is elapsed
-      #if SAVE_INFO_INTERVAL_MS > 0
-        ELAPSED(ms, next_save_ms) ||
-      #endif
-      // Save on every new Z height
-      (current_position[Z_AXIS] > 0 && current_position[Z_AXIS] > job_recovery_info.current_position[Z_AXIS])
     #endif
   ) {
     #if SAVE_INFO_INTERVAL_MS > 0
@@ -226,17 +258,32 @@ void save_job_recovery_info() {
     job_recovery_info.valid_foot = job_recovery_info.valid_head;
 
     // Machine state
-    COPY(job_recovery_info.current_position, current_position);
-    job_recovery_info.feedrate = feedrate_mm_s;
+    #ifdef LGT_MAC
+      job_recovery_info.save_current_Z = current_position[2]+recovery_z_height;
+      job_recovery_info.save_current_E = current_position[3];
 
-    #if HOTENDS > 1
-      job_recovery_info.active_hotend = active_extruder;
-    #endif
+      job_recovery_info.feedrate = feedrate_mm_s;
+      job_recovery_info.have_percentdone = card.percentDone();
 
-    COPY(job_recovery_info.target_temperature, thermalManager.target_temperature);
+      for (int i = 0; i < HOTENDS; i++)
+      {
+        job_recovery_info.target_temperature[i] = thermalManager.target_temperature[i];
+      }
 
-    #if HAS_HEATED_BED
       job_recovery_info.target_temperature_bed = thermalManager.target_temperature_bed;
+    #else
+      COPY(job_recovery_info.current_position, current_position);
+      job_recovery_info.feedrate = feedrate_mm_s;
+
+      #if HOTENDS > 1
+        job_recovery_info.active_hotend = active_extruder;
+      #endif
+
+      COPY(job_recovery_info.target_temperature, thermalManager.target_temperature);
+
+      #if HAS_HEATED_BED
+        job_recovery_info.target_temperature_bed = thermalManager.target_temperature_bed;
+      #endif
     #endif
 
     #if FAN_COUNT
@@ -260,7 +307,7 @@ void save_job_recovery_info() {
     COPY(job_recovery_info.command_queue, command_queue);
 
     // Elapsed print job time
-    job_recovery_info.print_job_elapsed = print_job_timer.duration();
+    job_recovery_info.print_job_elapsed = recovery_time + print_job_timer.duration();
 
     // SD file position
     card.getAbsFilename(job_recovery_info.sd_filename);

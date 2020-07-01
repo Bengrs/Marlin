@@ -1,3 +1,9 @@
+This repo contains a modified version of Marlin 1.1.x for the Alfawise u30pro, based on the official marlin repo.
+
+Changes specific to the U30Pro were ported from the LONGER3D official repository: https://github.com/LONGER3D/Marlin1.1.9_LGT0.3.x_Alfawise_Ux0Pro
+
+This version is UNTESTED. Use at your own risk.
+
 # Marlin 3D Printer Firmware
 <img align="right" src="../../raw/1.1.x/buildroot/share/pixmaps/logo/marlin-250.png" />
 
